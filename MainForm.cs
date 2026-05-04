@@ -17,6 +17,12 @@ namespace VectorGraphicsEditor
         private IShape? _tempShape;
         private PolygonShape? _activePolygon;
 
+        // Dragging state
+        private IShape? _draggedShape;
+        private int _draggedHandleIndex = -1;
+        private int _draggedEdgeIndex = -1;
+        private Point _lastMousePos;
+
         private enum Tool
         {
             Select,
@@ -42,6 +48,8 @@ namespace VectorGraphicsEditor
             pictureBox1.MouseDown += OnMouseDown;
             pictureBox1.MouseMove += OnMouseMove;
             pictureBox1.MouseUp += OnMouseUp;
+            this.KeyDown += OnKeyDown;
+            this.KeyPreview = true; // Ensure Form receives keys before controls
             pictureBox1.SizeChanged += (s, e) => {
                 if (pictureBox1.Width > 0 && pictureBox1.Height > 0)
                 {
@@ -73,7 +81,15 @@ namespace VectorGraphicsEditor
             this.FormClosed += (s, e) => _rasterizer.DirectBitmap.Dispose();
 
             _scene.ShapesChanged += (s, e) => Redraw();
-            _scene.SelectionChanged += (s, e) => Redraw();
+            _scene.SelectionChanged += (s, e) => {
+                if (_scene.SelectedShape != null)
+                {
+                    txtThickness.Text = _scene.SelectedShape.Thickness.ToString();
+                    btnColor.BackColor = _scene.SelectedShape.BaseColor;
+                    btnColor.ForeColor = btnColor.BackColor.GetBrightness() > 0.5f ? Color.Black : Color.White;
+                }
+                Redraw();
+            };
             _scene.RenderSettingsChanged += (s, e) => Redraw();
         }
 
@@ -96,8 +112,49 @@ namespace VectorGraphicsEditor
         {
             if (_currentTool == Tool.Select)
             {
+                // Prioritize handles of selected shape
+                if (_scene.SelectedShape != null)
+                {
+                    int handleIdx = _scene.SelectedShape.HitTestHandle(e.X, e.Y);
+                    if (handleIdx != -1)
+                    {
+                        _draggedShape = _scene.SelectedShape;
+                        _draggedHandleIndex = handleIdx;
+                        _lastMousePos = e.Location;
+                        return;
+                    }
+
+                    int edgeIdx = _scene.SelectedShape.HitTestEdge(e.X, e.Y);
+                    if (edgeIdx != -1)
+                    {
+                        _draggedShape = _scene.SelectedShape;
+                        _draggedEdgeIndex = edgeIdx;
+                        _lastMousePos = e.Location;
+                        return;
+                    }
+                }
+
+                // If no handles/edges of selected, look for other shapes
                 var hit = _scene.Shapes.LastOrDefault(s => s.HitTest(e.X, e.Y));
                 _scene.SelectedShape = hit;
+                
+                if (hit != null)
+                {
+                    _draggedShape = hit;
+                    
+                    // Check handles of this shape first, then edges
+                    int handleIdx = hit.HitTestHandle(e.X, e.Y);
+                    if (handleIdx != -1)
+                    {
+                        _draggedHandleIndex = handleIdx;
+                    }
+                    else
+                    {
+                        _draggedEdgeIndex = hit.HitTestEdge(e.X, e.Y);
+                    }
+                    
+                    _lastMousePos = e.Location;
+                }
                 return;
             }
 
@@ -117,7 +174,22 @@ namespace VectorGraphicsEditor
                     }
                     else
                     {
-                        _activePolygon.Vertices.Add(e.Location);
+                        // Check proximity to first vertex to close
+                        Point first = _activePolygon.Vertices[0];
+                        if (ShapeHelpers.DistSq(e.X, e.Y, first.X, first.Y) <= ShapeHelpers.HitRadius * ShapeHelpers.HitRadius)
+                        {
+                            if (_activePolygon.Vertices.Count > 2)
+                            {
+                                _activePolygon.Vertices.RemoveAt(_activePolygon.Vertices.Count - 1); // Remove placeholder
+                                _activePolygon.IsClosed = true;
+                            }
+                            _activePolygon = null;
+                            Redraw();
+                        }
+                        else
+                        {
+                            _activePolygon.Vertices.Add(e.Location);
+                        }
                     }
                 }
                 else if (e.Button == MouseButtons.Right && _activePolygon != null)
@@ -138,6 +210,36 @@ namespace VectorGraphicsEditor
 
         private void OnMouseMove(object sender, MouseEventArgs e)
         {
+            if (_draggedShape != null)
+            {
+                int dx = e.X - _lastMousePos.X;
+                int dy = e.Y - _lastMousePos.Y;
+
+                if (_draggedHandleIndex != -1)
+                {
+                    _draggedShape.MoveHandle(_draggedHandleIndex, e.Location);
+                }
+                else if (_draggedEdgeIndex != -1)
+                {
+                    if (Control.ModifierKeys == Keys.Control)
+                    {
+                        _draggedShape.Move(dx, dy);
+                    }
+                    else
+                    {
+                        _draggedShape.MoveEdge(_draggedEdgeIndex, dx, dy);
+                    }
+                }
+                else
+                {
+                    _draggedShape.Move(dx, dy);
+                }
+
+                _lastMousePos = e.Location;
+                Redraw();
+                return;
+            }
+
             if (_currentTool == Tool.Polygon && _activePolygon != null)
             {
                 _activePolygon.Vertices[_activePolygon.Vertices.Count - 1] = e.Location;
@@ -172,6 +274,10 @@ namespace VectorGraphicsEditor
 
         private void OnMouseUp(object sender, MouseEventArgs e)
         {
+            _draggedShape = null;
+            _draggedHandleIndex = -1;
+            _draggedEdgeIndex = -1;
+
             if (_startPoint == null) return;
 
             if (_tempShape != null)
@@ -181,6 +287,15 @@ namespace VectorGraphicsEditor
             }
             _startPoint = null;
             Redraw();
+        }
+
+        private void OnKeyDown(object sender, KeyEventArgs e)
+        {
+            if (e.KeyCode == Keys.Delete && _scene.SelectedShape != null)
+            {
+                _scene.RemoveShape(_scene.SelectedShape);
+                Redraw();
+            }
         }
 
         private void Redraw()

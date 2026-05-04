@@ -18,6 +18,18 @@ namespace VectorGraphicsEditor.Models
         int Thickness { get; set; }
 
         bool HitTest(int x, int y);
+
+        void Move(int dx, int dy);
+
+        int HitTestHandle(int x, int y);
+
+        void MoveHandle(int index, Point newPos);
+
+        Point[] GetHandles();
+
+        // Specific for edge manipulation (mostly for Polygon)
+        int HitTestEdge(int x, int y);
+        void MoveEdge(int index, int dx, int dy);
     }
 
 

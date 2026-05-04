@@ -7,11 +7,11 @@ using VectorGraphicsEditor.State;
 namespace RasterEditor.Rendering
 {
     /// <summary>
-    /// Core rendering engine. Implements exactly the algorithms from Lecture 5:
+    /// Core rendering engine.
     ///
     ///   Line    → Symmetric Midpoint Line      (slide 12)
     ///   Thick   → Copying pixels in rows/cols  (slide 19)
-    ///   Circle  → Alternative Midpoint Circle  (slide 17)  ← additions only
+    ///   Circle  → Alternative Midpoint Circle  (slide 17)  
     ///   AA Line → Xiaolin Wu Line              (slide 30)
     ///   AA Circ → Xiaolin Wu Circle            (slide 32)
     /// </summary>
@@ -27,9 +27,7 @@ namespace RasterEditor.Rendering
             _scene = scene;
             _db = new DirectBitmap(width, height);
         }
-
-        // ── Public API ───────────────────────────────────────────────────────
-
+        
         public void Resize(int width, int height)
         {
             _db.Dispose();
@@ -58,8 +56,6 @@ namespace RasterEditor.Rendering
 
         public DirectBitmap DirectBitmap => _db;
 
-        // ── Shape dispatchers ────────────────────────────────────────────────
-
         public void DrawLine(LineShape line)
         {
             int x1 = line.StartPoint.X, y1 = line.StartPoint.Y;
@@ -67,8 +63,14 @@ namespace RasterEditor.Rendering
 
             if (_scene.AntiAliasingEnabled)
             {
-                // AA ignores thickness per spec
-                DrawXiaolinWuLine(x1, y1, x2, y2, line.BaseColor);
+                if (line.Thickness > 1)
+                {
+                    DrawThickXiaolinWuLine(x1, y1, x2, y2, line.BaseColor, line.Thickness);
+                }
+                else
+                {
+                    DrawXiaolinWuLine(x1, y1, x2, y2, line.BaseColor);
+                }
             }
             else if (line.Thickness > 1)
             {
@@ -83,13 +85,28 @@ namespace RasterEditor.Rendering
         public void DrawCircle(CircleShape circle)
         {
             if (_scene.AntiAliasingEnabled)
-                DrawXiaolinWuCircle(circle.Radius,
-                                    circle.Center.X, circle.Center.Y,
-                                    circle.BaseColor);
+            {
+                if (circle.Thickness > 1)
+                {
+                    DrawThickXiaolinWuCircle(circle.Radius, circle.Center.X, circle.Center.Y, circle.BaseColor, circle.Thickness);
+                }
+                else
+                {
+                    DrawXiaolinWuCircle(circle.Radius, circle.Center.X, circle.Center.Y, circle.BaseColor);
+                }
+            }
+            else if (circle.Thickness > 1)
+            {
+                DrawThickCircle(circle.Radius,
+                                circle.Center.X, circle.Center.Y,
+                                circle.BaseColor, circle.Thickness);
+            }
             else
+            {
                 DrawAlternativeMidpointCircle(circle.Radius,
                                               circle.Center.X, circle.Center.Y,
                                               circle.BaseColor);
+            }
         }
 
         public void DrawPolygon(PolygonShape polygon)
@@ -116,36 +133,21 @@ namespace RasterEditor.Rendering
             }
         }
 
-        // ── Core pixel writer ────────────────────────────────────────────────
-
         /// <summary>
         /// The ONLY method allowed to write an opaque pixel.
         /// Every algorithm below calls exclusively this or BlendPixel.
         /// </summary>
         public void PutPixel(int x, int y, Color color)
             => _db.SetPixel(x, y, color);
-
-        // ════════════════════════════════════════════════════════════════════
-        // 1. SYMMETRIC MIDPOINT LINE  (Lecture 5, slide 12)
-        // ════════════════════════════════════════════════════════════════════
-
-        /// <summary>
-        /// Draws from BOTH endpoints toward the centre simultaneously,
-        /// sharing a single decision variable d.
-        ///
-        /// Handles all octants by choosing the dominant axis and
-        /// normalising direction before entering the loop.
-        /// </summary>
+        
         public void DrawSymmetricMidpointLine(int x1, int y1, int x2, int y2,
                                                Color color)
         {
             int dx = Math.Abs(x2 - x1);
             int dy = Math.Abs(y2 - y1);
 
-            // ── Shallow line: |slope| <= 1, step in X ────────────────────────
             if (dx >= dy)
             {
-                // Normalise so that x1 < x2 (the algorithm steps left → right)
                 if (x1 > x2)
                 {
                     Swap(ref x1, ref x2);
@@ -190,7 +192,6 @@ namespace RasterEditor.Rendering
                     PutPixel(xb, yb, color);
                 }
             }
-            // ── Steep line: |slope| > 1, step in Y ───────────────────────────
             else
             {
                 // Normalise so that y1 < y2
@@ -236,64 +237,64 @@ namespace RasterEditor.Rendering
             }
         }
 
-        // ════════════════════════════════════════════════════════════════════
-        // 2. THICK LINE — copying pixels  (Lecture 5, slide 19)
-        // ════════════════════════════════════════════════════════════════════
-
-        /// <summary>
-        /// Achieves thickness by copying the spine line into parallel offsets.
-        ///
-        /// Shallow lines (|dx| >= |dy|): copies are stacked vertically
-        ///   (i.e. the same x-column is replicated at y ± offset).
-        /// Steep lines  (|dy|  > |dx|): copies are stacked horizontally.
-        ///
-        /// Only odd thickness values reach here (enforced by the model).
-        /// half = thickness / 2  gives the symmetric spread either side.
-        /// </summary>
         public void DrawThickLine(int x1, int y1, int x2, int y2,
                                    Color color, int thickness)
         {
             int dx = Math.Abs(x2 - x1);
             int dy = Math.Abs(y2 - y1);
-            int half = thickness / 2;   // e.g. thickness=5 → half=2  → offsets -2,-1,0,1,2
+            int half = thickness / 2;
 
             if (dx >= dy)
             {
-                // Shallow: stack rows  (copy in the y direction)
                 for (int offset = -half; offset <= half; offset++)
                     DrawSymmetricMidpointLine(x1, y1 + offset,
                                               x2, y2 + offset, color);
             }
             else
             {
-                // Steep: stack columns  (copy in the x direction)
                 for (int offset = -half; offset <= half; offset++)
                     DrawSymmetricMidpointLine(x1 + offset, y1,
                                               x2 + offset, y2, color);
             }
         }
 
-        // ════════════════════════════════════════════════════════════════════
-        // 3. ALTERNATIVE MIDPOINT CIRCLE  (Lecture 5, slides 16-17)
-        //    — additions only inside the loop, no multiplications —
-        // ════════════════════════════════════════════════════════════════════
+        public void DrawThickCircle(int r, int xc, int yc, Color color, int thickness)
+        {
+            int half = thickness / 2;
+            for (int dr = -half; dr <= half; dr++)
+            {
+                if (r + dr >= 0)
+                    DrawAlternativeMidpointCircle(r + dr, xc, yc, color);
+            }
+        }
 
-        /// <summary>
-        /// Uses two incremental delta accumulators dE and dSE so that
-        /// updating d never requires a multiplication:
-        ///
-        ///   Initial values:
-        ///     d   = 1 - R
-        ///     dE  = 3
-        ///     dSE = 5 - 2R
-        ///
-        ///   Each iteration:
-        ///     if d &lt; 0  → move E:  d += dE;  dE += 2; dSE += 2
-        ///     else      → move SE: d += dSE; dE += 2; dSE += 4; --y
-        ///     ++x
-        ///
-        /// Computes 1/8 of the circle and mirrors into all 8 octants.
-        /// </summary>
+        public void DrawThickXiaolinWuLine(int x1, int y1, int x2, int y2, Color color, int thickness)
+        {
+            int dx = Math.Abs(x2 - x1);
+            int dy = Math.Abs(y2 - y1);
+            int half = thickness / 2;
+            if (dx >= dy)
+            {
+                for (int offset = -half; offset <= half; offset++)
+                    DrawXiaolinWuLine(x1, y1 + offset, x2, y2 + offset, color);
+            }
+            else
+            {
+                for (int offset = -half; offset <= half; offset++)
+                    DrawXiaolinWuLine(x1 + offset, y1, x2 + offset, y2, color);
+            }
+        }
+
+        public void DrawThickXiaolinWuCircle(int r, int xc, int yc, Color color, int thickness)
+        {
+            int half = thickness / 2;
+            for (int dr = -half; dr <= half; dr++)
+            {
+                if (r + dr >= 0)
+                    DrawXiaolinWuCircle(r + dr, xc, yc, color);
+            }
+        }
+
         public void DrawAlternativeMidpointCircle(int r, int xc, int yc, Color color)
         {
             int d = 1 - r;        // initial decision parameter
@@ -338,20 +339,6 @@ namespace RasterEditor.Rendering
             PutPixel(xc - y, yc - x, color);
         }
 
-        // ════════════════════════════════════════════════════════════════════
-        // 4. XIAOLIN WU LINE  (Lecture 5, slide 30)
-        // ════════════════════════════════════════════════════════════════════
-
-        /// <summary>
-        /// For each x column the algorithm paints a PAIR of vertically
-        /// adjacent pixels:
-        ///
-        ///   c1 = L*(1 - frac(y)) + B*frac(y)   ← upper pixel
-        ///   c2 = L*frac(y)       + B*(1-frac(y)) ← lower pixel
-        ///
-        /// where frac(y) is the fractional distance of the ideal y from the
-        /// upper grid line.  The steep case is handled by transposing x ↔ y.
-        /// </summary>
         public void DrawXiaolinWuLine(int x1, int y1, int x2, int y2, Color color)
         {
             bool steep = Math.Abs(y2 - y1) > Math.Abs(x2 - x1);
@@ -393,20 +380,6 @@ namespace RasterEditor.Rendering
             }
         }
 
-        // ════════════════════════════════════════════════════════════════════
-        // 5. XIAOLIN WU CIRCLE  (Lecture 5, slides 31-32)
-        // ════════════════════════════════════════════════════════════════════
-
-        /// <summary>
-        /// For each y row the algorithm computes the exact arc x-position
-        /// P = sqrt(R² - y²) and paints two horizontally adjacent pixels:
-        ///
-        ///   T  = D(R,y) = ceil(P) - P       (fractional overshoot)
-        ///   c2 = L*(1-T) + B*T              ← outer pixel  (P2 = ceil)
-        ///   c1 = L*T     + B*(1-T)          ← inner pixel  (P1 = floor)
-        ///
-        /// Computed for the first octant and mirrored into all 8.
-        /// </summary>
         public void DrawXiaolinWuCircle(int r, int xc, int yc, Color color)
         {
             int x = r;
@@ -457,8 +430,6 @@ namespace RasterEditor.Rendering
             _db.BlendPixel(xc - a, yc - b, c);
         }
 
-        // ── Selection indicator ──────────────────────────────────────────────
-
         private void DrawSelectionIndicator(IShape shape)
         {
             Rectangle bounds = GetShapeBounds(shape);
@@ -476,6 +447,27 @@ namespace RasterEditor.Rendering
                 if ((y & 1) == 0) continue;
                 _db.BlendPixel(bounds.Left, y, dash);
                 _db.BlendPixel(bounds.Right, y, dash);
+            }
+
+            // Draw handles
+            foreach (Point p in shape.GetHandles())
+            {
+                DrawHandle(p);
+            }
+        }
+
+        private void DrawHandle(Point p)
+        {
+            int r = ShapeHelpers.HitRadius;
+            for (int dx = -r; dx <= r; dx++)
+            {
+                for (int dy = -r; dy <= r; dy++)
+                {
+                    if (Math.Abs(dx) == r || Math.Abs(dy) == r)
+                    {
+                        PutPixel(p.X + dx, p.Y + dy, Color.Blue);
+                    }
+                }
             }
         }
 
@@ -509,11 +501,6 @@ namespace RasterEditor.Rendering
 
         // ── Helpers ──────────────────────────────────────────────────────────
 
-        /// <summary>
-        /// Linear interpolation between two colours.
-        /// t=0 → a,  t=1 → b
-        /// Matches the slide formula: L*(1-t) + B*t
-        /// </summary>
         private static Color LerpColor(Color a, Color b, float t)
         {
             t = t < 0f ? 0f : t > 1f ? 1f : t;
