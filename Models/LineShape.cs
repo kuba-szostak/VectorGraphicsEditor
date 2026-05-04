@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using System.Text.Json.Serialization;
 using System.Threading.Tasks;
 
 namespace VectorGraphicsEditor.Models
@@ -12,11 +13,14 @@ namespace VectorGraphicsEditor.Models
         public Point StartPoint { get; set; }
         public Point EndPoint { get; set; }
 
+        [JsonIgnore]
         public Color BaseColor 
         { 
             get => Color.FromArgb(_argb); 
             set => _argb = value.ToArgb(); 
         }
+
+        [JsonPropertyName("baseColor")]
 
         private int _argb { get; set; } = Color.Black.ToArgb();
 
@@ -24,7 +28,7 @@ namespace VectorGraphicsEditor.Models
         public int Thickness 
         { 
             get => _thickness;
-            set => ShapeHelpers.ToOdd(value);
+            set => _thickness = ShapeHelpers.ToOdd(value);
         }
 
         public bool HitTest(int x, int y)

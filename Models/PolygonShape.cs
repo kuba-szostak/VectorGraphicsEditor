@@ -7,7 +7,7 @@ using System.Threading.Tasks;
 
 namespace VectorGraphicsEditor.Models
 {
-    internal class PolygonShape : IShape
+    public class PolygonShape : IShape
     {
         public List<Point> Vertices { get; set; } = new List<Point>();
 
@@ -26,7 +26,7 @@ namespace VectorGraphicsEditor.Models
         public int Thickness
         {
             get => _thickness;
-            set => ShapeHelpers.ToOdd(value);
+            set => _thickness = ShapeHelpers.ToOdd(value);
         }
 
         public bool HitTest(int x, int y)

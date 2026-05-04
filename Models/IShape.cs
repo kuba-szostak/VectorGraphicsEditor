@@ -4,8 +4,13 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
+using System.Text.Json.Serialization;
+
 namespace VectorGraphicsEditor.Models
 {
+    [JsonDerivedType(typeof(LineShape), typeDiscriminator: "line")]
+    [JsonDerivedType(typeof(CircleShape), typeDiscriminator: "circle")]
+    [JsonDerivedType(typeof(PolygonShape), typeDiscriminator: "polygon")]
     public interface IShape
     {
         Color BaseColor { get; set; }

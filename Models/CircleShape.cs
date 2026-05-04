@@ -27,7 +27,7 @@ namespace VectorGraphicsEditor.Models
         public int Thickness 
         { 
             get => _thickness; 
-            set => ShapeHelpers.ToOdd(value); 
+            set => _thickness = ShapeHelpers.ToOdd(value); 
         }
 
         public bool HitTest(int x, int y)
