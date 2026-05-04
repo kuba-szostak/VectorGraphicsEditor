@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Text;
+using System.Text.Json.Serialization;
 using System.Threading.Tasks;
 
 namespace VectorGraphicsEditor.Models
@@ -12,9 +13,12 @@ namespace VectorGraphicsEditor.Models
         public Point Center { get; set; }
         public int Radius { get; set; }
 
+        [JsonPropertyName("baseColor")]
         private int _argb { get; set; } = Color.Black.ToArgb();
 
         private int _thickness = 1;
+
+        [JsonIgnore]
         public Color BaseColor 
         { 
             get => Color.FromArgb(_argb); 
